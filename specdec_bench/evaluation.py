@@ -22,7 +22,7 @@ def save(path, value):
     temporary.replace(path)
 
 
-def metrics_for(rows, folder):
+def metrics_for(rows, folder, gpu_count=1):
     from . import datasets, metrics
 
     class SpecBench(metrics.SpecBench):
@@ -38,7 +38,7 @@ def metrics_for(rows, folder):
             pass
 
     al = SpecBench([datasets.base.Request(**r) for r in rows])
-    timing = metrics.Timing(1)
+    timing = metrics.Timing(gpu_count)
     al.directory = timing.directory = str(folder)
     return al, timing
 
@@ -106,7 +106,8 @@ async def evaluate(model, tokenizer, rows, settings, directory, on_progress=None
         folder = directory / f"repeat-{repeat}"
         folder.mkdir()
         model.set_sampling(seed, generation["tokens_to_generate"])
-        al, timing = metrics_for(rows, folder)
+        gpu_count = settings.get("tp_size", 1) * settings.get("pp_size", 1)
+        al, timing = metrics_for(rows, folder, gpu_count)
 
         def progress(row, tokens, repeat=repeat):
             if on_progress:
@@ -346,6 +347,7 @@ def initialize(settings, root):
     import torch
 
     settings["hardware"] = {
+        "gpu_count": settings.get("tp_size", 1) * settings.get("pp_size", 1),
         "gpu": torch.cuda.get_device_name(0),
         "capability": list(torch.cuda.get_device_capability(0)),
         "torch": torch.__version__,

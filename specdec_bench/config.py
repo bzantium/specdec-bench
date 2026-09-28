@@ -49,13 +49,11 @@ def resolve(params, explicit):
     match = re.fullmatch(r"speed-bench(?::([1-9]\d*))?", params["tasks"].strip())
     if not match:
         raise ValueError("SPEED-Bench requires --tasks speed-bench[:N] alone")
-    if (
-        params["backend"] != "vllm"
-        or params.get("tp_size") not in (None, 1)
-        or params.get("dp_size") not in (None, 1)
-        or params["pp_size"] != 1
-    ):
-        raise ValueError("SPEED-Bench currently requires vLLM on one GPU (TP=PP=DP=1)")
+    if params["backend"] != "vllm" or params.get("dp_size") not in (None, 1):
+        raise ValueError("SPEED-Bench requires one vLLM engine (DP=1)")
+    parallel = {key: 1 if params.get(key) is None else params[key] for key in ("tp_size", "pp_size")}
+    if any(type(value) is not int or value < 1 for value in parallel.values()):
+        raise ValueError("TP and PP must be positive integers")
     data = {}
     if params.get("config"):
         import yaml
@@ -107,6 +105,7 @@ def resolve(params, explicit):
     return {
         "upstream_commit": UPSTREAM_COMMIT,
         "model": params["model"],
+        **parallel,
         "repeats": int(match[1] or 1),
         "generation": generation,
         "concurrency": 32,
@@ -170,6 +169,7 @@ def engine_options(settings):
     parser.add_argument("--dtype", default="auto")
     parser.add_argument("--kv-cache-dtype", default="auto")
     parser.add_argument("--tokenizer")
+    parser.add_argument("--enable-expert-parallel", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--async-scheduling", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--enable-prefix-caching", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--enforce-eager", action=argparse.BooleanOptionalAction, default=False)
@@ -192,8 +192,8 @@ def engine_options(settings):
             values[key] = settings[key]
     values.update(
         model=settings["model"],
-        tensor_parallel_size=1,
-        pipeline_parallel_size=1,
+        tensor_parallel_size=settings.get("tp_size", 1),
+        pipeline_parallel_size=settings.get("pp_size", 1),
         data_parallel_size=1,
         trust_remote_code=settings["trust_remote_code"],
         skip_tokenizer_init=False,

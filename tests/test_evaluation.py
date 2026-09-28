@@ -38,7 +38,9 @@ def test_measurement_defaults_and_rejection():
     for options in [
         {"tasks": "speed-bench,foo"},
         {"top_p": 0.95},
-        {"tp_size": 2},
+        {"dp_size": 2},
+        {"tp_size": 0},
+        {"pp_size": -1},
         {"temperature": 0.6},
         {"server_address": "http://host"},
         {"extra_client_args": "++max_concurrent_requests=64"},
@@ -79,6 +81,26 @@ def test_yaml_and_cli_engine_precedence(tmp_path):
     assert settings["generation"]["chat_template_kwargs"] == {"thinking_mode": "think"}
     assert engine_options(settings)["max_model_len"] == 131072
     assert engine_options(settings)["gpu_memory_utilization"] == 0.8
+
+
+@pytest.mark.parametrize("tp,pp,ep", [(1, 1, False), (4, 1, True), (2, 2, False)])
+def test_parallelism_reaches_engine_and_comparison(tmp_path, tp, pp, ep):
+    from specdec_bench.config import engine_options
+    from specdec_bench.reporting import read_report
+
+    settings = resolve(context(tp_size=tp, pp_size=pp, extra_server_args="--enable-expert-parallel" if ep else ""))
+    settings["engine"] = engine_options(settings)
+    engine = settings["engine"]
+    assert engine["tensor_parallel_size"] == tp
+    assert engine["pipeline_parallel_size"] == pp
+    assert engine["data_parallel_size"] == 1
+    assert engine["enable_expert_parallel"] is ep
+    report = read_report(tmp_path, {"speed_bench": settings})
+    assert report["conditions"]["tp"] == tp
+    assert report["conditions"]["pp"] == pp
+    assert report["conditions"]["expert_parallel"] is ep
+    settings["engine"] = {**engine, "tensor_parallel_size": tp * 2}
+    assert read_report(tmp_path, {"speed_bench": settings})["comparison_key"] != report["comparison_key"]
 
 
 def test_empty_speculative_config_is_no_sd():
@@ -145,7 +167,8 @@ class Model:
         }
 
 
-def test_official_loop_macro_al_and_repeat_reset(tmp_path):
+@pytest.mark.parametrize("tp,pp", [(1, 1), (4, 1), (2, 2)])
+def test_official_loop_macro_al_and_repeat_reset(tmp_path, tp, pp):
     rows = [
         {
             "question_id": "a",
@@ -160,7 +183,7 @@ def test_official_loop_macro_al_and_repeat_reset(tmp_path):
             "turns": ["3"],
         },
     ]
-    settings = resolve(context(tasks="speed-bench:2"))
+    settings = resolve(context(tasks="speed-bench:2", tp_size=tp, pp_size=pp))
     settings.update(speculative_tokens=3, measurement_mode="speculative")
     block = asyncio.run(evaluate(Model(), Tokenizer(), rows, settings, tmp_path))
     # Conversation A is (4+1+1)/3=2; B is 1. Macro AL=1.5, not pooled 8/5.
@@ -171,6 +194,8 @@ def test_official_loop_macro_al_and_repeat_reset(tmp_path):
     assert (tmp_path / "output-rs1.jsonl.done").exists()
     assert len((tmp_path / "repeat-1/raw-turns.jsonl").read_text().splitlines()) == 3
     assert [r["total_generated_tokens"] for r in block["repeats"]] == [8, 8]
+    timing = json.loads((tmp_path / "repeat-0/timing.json").read_text())[0]
+    assert timing["Output TPS/gpu"] == pytest.approx(timing["Output TPS"] / (tp * pp))
 
 
 def test_repeat_tps_is_arithmetic_mean_not_pooled_ratio():
