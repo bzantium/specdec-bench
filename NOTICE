@@ -1,0 +1,17 @@
+SpecDec Bench
+
+Evaluation code extracted from NVIDIA Model-Optimizer, examples/specdec_bench.
+Source: https://github.com/NVIDIA/Model-Optimizer
+Commit: 23355eda90a25c290f9b1fdfb928ad54caae7d10
+
+Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+Licensed under the Apache License, Version 2.0; see LICENSE.
+The Medusa adapter includes code by Heming Xia; its attribution is retained
+in specdec_bench/models/specbench_medusa.py.
+
+Changes: standalone package metadata and provenance replace the Model-Optimizer
+version import and ancestor-directory Git lookup. The unchanged conversation loop
+is moved to specdec_bench/loop.py. Native measurement configuration, per-step output
+capture, serial repeats, checkpoints and reporting are added for harness integration.
+Dataset, runner, model, acceptance and timing calculations are unchanged.
+Model-Optimizer's model optimization code and S3 upload tooling are not included.
