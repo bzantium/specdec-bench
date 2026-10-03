@@ -224,6 +224,33 @@ def test_repeat_tps_is_arithmetic_mean_not_pooled_ratio():
         aggregate(rows[:1], settings)
 
 
+def test_aggregate_validation_allows_std_roundoff_only():
+    from specdec_bench.reporting import _matches_aggregate
+
+    rows = [
+        {
+            "seed": i,
+            "num_entries": 880,
+            "total_generated_tokens": 100,
+            "generation_seconds": 10.0,
+            "output_tokens_per_second": 10.0 + i,
+            "spec_acceptance_length": 2.0 + i * 0.01,
+            "ttft_seconds": 0.1,
+            "category_al": {"math": 2.0},
+        }
+        for i in range(4)
+    ]
+    settings = {"repeats": 4, "seeds": list(range(4)), "measurement_mode": "speculative"}
+    block = aggregate(rows, settings)
+    block["spec_acceptance_length_std"] += 2e-18
+    assert _matches_aggregate(block, rows, settings)
+    block["spec_acceptance_length_std"] += 1e-5
+    assert not _matches_aggregate(block, rows, settings)
+    block = aggregate(rows, settings)
+    block["spec_acceptance_length"] += 2e-15
+    assert not _matches_aggregate(block, rows, settings)
+
+
 from specdec_bench.evaluation import StepCapture
 
 
