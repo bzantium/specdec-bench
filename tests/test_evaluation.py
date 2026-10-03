@@ -249,6 +249,11 @@ def test_aggregate_validation_allows_std_roundoff_only():
     block = aggregate(rows, settings)
     block["spec_acceptance_length"] += 2e-15
     assert not _matches_aggregate(block, rows, settings)
+    rows = [dict(row, spec_acceptance_length=float(i + 1)) for i, row in enumerate(rows[:3])]
+    settings = {**settings, "repeats": 3, "seeds": [0, 1, 2]}
+    block = aggregate(rows, settings)
+    block["spec_acceptance_length_std"] = True
+    assert not _matches_aggregate(block, rows, settings)
 
 
 from specdec_bench.evaluation import StepCapture

@@ -45,8 +45,10 @@ def _matches_aggregate(block, repeats, settings):
         return False
     for key, value in expected.items():
         saved = block[key]
-        if key.endswith("_std") and isinstance(saved, (int, float)):
-            if not math.isclose(saved, value, rel_tol=1e-12, abs_tol=1e-15):
+        if key.endswith("_std"):
+            if type(saved) not in (int, float) or not math.isclose(
+                saved, value, rel_tol=1e-12, abs_tol=1e-15
+            ):
                 return False
         elif saved != value:
             return False
