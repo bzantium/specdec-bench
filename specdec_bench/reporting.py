@@ -39,6 +39,22 @@ def aggregate(summaries, settings):
     return block
 
 
+def _matches_aggregate(block, repeats, settings):
+    expected = aggregate(repeats, settings)
+    if block.keys() != expected.keys():
+        return False
+    for key, value in expected.items():
+        saved = block[key]
+        if key.endswith("_std"):
+            if type(saved) not in (int, float) or not math.isclose(
+                saved, value, rel_tol=1e-12, abs_tol=1e-15
+            ):
+                return False
+        elif saved != value:
+            return False
+    return True
+
+
 def read_report(root, config, failure=None):
     root = Path(root)
     settings = config["speed_bench"]
@@ -155,7 +171,7 @@ def read_report(root, config, failure=None):
         for name in ("output_tokens_per_second", "spec_acceptance_length"):
             if not math.isclose(block[name], statistics.mean(r[name] for r in repeats), rel_tol=1e-9):
                 raise ValueError("Invalid repetition average")
-        if block != aggregate(repeats, settings):
+        if not _matches_aggregate(block, repeats, settings):
             raise ValueError("Final metrics differ from saved repetitions")
     except (KeyError, ValueError, TypeError, OSError, ZeroDivisionError) as exc:
         report.update(status="invalid", reason=str(exc))
